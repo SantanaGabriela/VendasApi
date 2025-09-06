@@ -1,7 +1,12 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using RabbitMQ.Client;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using VendasApi.Data;
 using VendasApi.DTOs;
 using VendasApi.Models;
@@ -30,10 +35,30 @@ namespace VendasApi.Services
             };
             _context.Orders.Add(order);
             await _context.SaveChangesAsync();
+            await PublishOrderCreatedMesageAsync(order);
             return "Pedido criado Com Sucesso!";
         }
+        private async Task PublishOrderCreatedMesageAsync(Order order)
+        {
+            var factory = new ConnectionFactory { HostName = "localhost" };
+            using var connection = await factory.CreateConnectionAsync();
+            using var channel = await connection.CreateChannelAsync();
 
- 
+            await channel.QueueDeclareAsync(queue: "pedido", durable: false, exclusive: false, autoDelete: false,
+                arguments: null);
+
+            foreach (var item in order.Items)
+            {
+                item.Order = null;
+            }
+            string jsonString = JsonSerializer.Serialize(order);
+            var body = Encoding.UTF8.GetBytes(jsonString);
+
+            await channel.BasicPublishAsync(exchange: string.Empty, routingKey: "pedido", body: body);
+            return;
+        }
+
+
     }
 }
 
