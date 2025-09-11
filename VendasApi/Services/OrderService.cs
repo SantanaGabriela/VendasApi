@@ -1,12 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using RabbitMQ.Client;
-using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using RabbitMQ.Client;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using VendasApi.Data;
 using VendasApi.DTOs;
 using VendasApi.Models;
@@ -23,6 +17,39 @@ namespace VendasApi.Services
         }
         public async Task<string> CreateOrderAsync(CreateOrderDto createorderDto)
         {
+
+            foreach (var item in createorderDto.Items)
+            {
+                using var httpClient = new HttpClient();
+                var response = await httpClient.GetAsync(
+                    $"https://localhost:7177/api/products/{item.ProductId}");
+
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    throw new Exception($"Produto {item.ProductId} não encontrado no estoque");
+                }
+
+                response.EnsureSuccessStatusCode();
+
+
+                var products = await response.Content.ReadFromJsonAsync<List<ProductResponse>>();
+
+                if (products == null || products.Count == 0)
+                {
+                    throw new Exception($"Produto {item.ProductId} não encontrado no estoque");
+                }
+
+                var product = products.First();
+
+                if (product.Stock < item.Quantity)
+                {
+                    throw new Exception(
+                        $"Estoque insuficiente para o produto {item.ProductId}. " +
+                        $"Disponível: {product.Stock}, solicitado: {item.Quantity}");
+                }
+
+            }
+
             var order = new Order
             {
                 CustomerId = createorderDto.CustomerId,
@@ -31,12 +58,36 @@ namespace VendasApi.Services
                 {
                     ProductId = i.ProductId,
                     Quantity = i.Quantity,
-                }).ToList()
+                }).ToList(),
+                Status = "pendente"
             };
             _context.Orders.Add(order);
             await _context.SaveChangesAsync();
             await PublishOrderCreatedMesageAsync(order);
             return "Pedido criado Com Sucesso!";
+        }
+
+        public async Task<GetStatusDto> GetOrderStatusAsync(int orderId)
+        {
+            var order = await _context.Orders.FindAsync(orderId);
+            if (order == null)
+            {
+                throw new KeyNotFoundException("Pedido não encontrado");
+            }
+            return new GetStatusDto { Status = order.Status };
+        }
+
+        public async Task<bool> UpdateOrderStatusAsync(int orderId, UpdateStatus status)
+        {
+            var order = await _context.Orders.FindAsync(orderId);
+            if (order == null)
+            {
+                return false;
+            }
+
+            order.Status = status.Status;
+            await _context.SaveChangesAsync();
+            return true;
         }
         private async Task PublishOrderCreatedMesageAsync(Order order)
         {
