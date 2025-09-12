@@ -1,4 +1,5 @@
-﻿using RabbitMQ.Client;
+﻿using Microsoft.AspNetCore.Identity.Data;
+using RabbitMQ.Client;
 using System.Text;
 using System.Text.Json;
 using VendasApi.Data;
@@ -18,36 +19,32 @@ namespace VendasApi.Services
         public async Task<string> CreateOrderAsync(CreateOrderDto createorderDto)
         {
 
+            var token = await GetStockApiTokenAsync();
+
             foreach (var item in createorderDto.Items)
             {
                 using var httpClient = new HttpClient();
-                var response = await httpClient.GetAsync(
-                    $"https://localhost:7177/api/products/{item.ProductId}");
+
+                // Adiciona o token JWT no header Authorization
+                httpClient.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+                var response = await httpClient.GetAsync($"https://localhost:7177/api/products/{item.ProductId}");
 
                 if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                {
                     throw new Exception($"Produto {item.ProductId} não encontrado no estoque");
-                }
 
                 response.EnsureSuccessStatusCode();
 
-
                 var products = await response.Content.ReadFromJsonAsync<List<ProductResponse>>();
-
                 if (products == null || products.Count == 0)
-                {
                     throw new Exception($"Produto {item.ProductId} não encontrado no estoque");
-                }
 
                 var product = products.First();
-
                 if (product.Stock < item.Quantity)
-                {
                     throw new Exception(
                         $"Estoque insuficiente para o produto {item.ProductId}. " +
                         $"Disponível: {product.Stock}, solicitado: {item.Quantity}");
-                }
-
             }
 
             var order = new Order
@@ -67,6 +64,27 @@ namespace VendasApi.Services
             return "Pedido criado Com Sucesso!";
         }
 
+        public async Task<string> GetStockApiTokenAsync()
+        {
+            using var httpClient = new HttpClient();
+
+            var loginRequest = new LoginRequest
+            {
+                Email = "admin@teste.com",
+                Password = "123"
+            };
+
+            var response = await httpClient.PostAsJsonAsync("https://localhost:7177/login", loginRequest);
+            response.EnsureSuccessStatusCode();
+
+            var loginResponse = await response.Content.ReadFromJsonAsync<TokenResponseDto>();
+            if (loginResponse == null || string.IsNullOrEmpty(loginResponse.Token))
+            {
+                throw new Exception("Não foi possível obter o token da API de Estoque");
+            }
+
+            return loginResponse.Token;
+        }
         public async Task<GetStatusDto> GetOrderStatusAsync(int orderId)
         {
             var order = await _context.Orders.FindAsync(orderId);

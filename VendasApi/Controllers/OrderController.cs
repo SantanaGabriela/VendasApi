@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RabbitMQ.Client;
@@ -10,8 +11,9 @@ using VendasApi.Services;
 
 namespace VendasApi.Controllers
 {
+    [Authorize]
     public class OrdersController : Controller
-    {
+    {   
         private readonly IOrderService _orderService;
 
         public OrdersController(IOrderService orderService)
