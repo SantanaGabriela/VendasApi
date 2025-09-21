@@ -33,8 +33,14 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddDbContext<OrderDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+builder.Services.AddDbContext<ClienteDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+
 
 builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddScoped<IClienteService, ClienteService>();
+
 // Add services to the container.
 
 builder.Services.AddControllers();
